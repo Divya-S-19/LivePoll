@@ -78,17 +78,17 @@ function Home() {
 
         <div className="features">
           <div>
-            <strong>⚡ Real-time</strong>
+            <strong> Real-time</strong>
             <span>Instant vote updates</span>
           </div>
 
           <div>
-            <strong>🔗 Shareable</strong>
+            <strong> Shareable</strong>
             <span>Share with anyone</span>
           </div>
 
           <div>
-            <strong>🔒 Secure</strong>
+            <strong> Secure</strong>
             <span>Protected poll creation</span>
           </div>
         </div>
@@ -105,7 +105,7 @@ function Login() {
     const password = event.target.password.value;
 
     try {
-      const response = await fetch("http://localhost:8081/login", {
+      const response = await fetch("https://livepoll-8vit.onrender.com/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -187,7 +187,7 @@ function Signup() {
     const password = event.target.password.value;
 
     try {
-      const response = await fetch("http://localhost:8081/signup", {
+      const response = await fetch("https://livepoll-8vit.onrender.com/signup", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -295,7 +295,7 @@ function CreatePoll() {
     setCreating(true);
 
     try {
-      const response = await fetch("http://localhost:8081/polls", {
+      const response = await fetch("https://livepoll-8vit.onrender.com/polls", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -392,7 +392,7 @@ function PollPage() {
     const loadPoll = async () => {
       try {
         const pollResponse = await fetch(
-          `http://localhost:8081/polls/${id}`
+          `https://livepoll-8vit.onrender.com/polls/${id}`
         );
 
         const pollData = await pollResponse.json();
@@ -405,7 +405,7 @@ function PollPage() {
         setPoll(pollData.poll);
 
         const resultsResponse = await fetch(
-          `http://localhost:8081/polls/${id}/results`
+          `https://livepoll-8vit.onrender.com/polls/${id}/results`
         );
 
         const resultsData = await resultsResponse.json();
@@ -427,7 +427,7 @@ function PollPage() {
     if (!id) return;
 
     const socket = new WebSocket(
-      `ws://localhost:8081/polls/${id}/live`
+      `wss://livepoll-8vit.onrender.com/polls/${id}/live`
     );
 
     socket.onmessage = (event) => {
@@ -453,7 +453,7 @@ function PollPage() {
 
     try {
       const response = await fetch(
-        `http://localhost:8081/polls/${id}/vote`,
+        `https://livepoll-8vit.onrender.com/polls/${id}/vote`,
         {
           method: "POST",
           headers: {
