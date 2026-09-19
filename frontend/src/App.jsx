@@ -125,7 +125,7 @@ function Login() {
 
       localStorage.setItem("token", data.token);
 
-      window.location.href = "/";
+      window.location.href = "/#/";
     } catch {
       alert("Could not connect to backend");
     }
@@ -208,7 +208,7 @@ function Signup() {
 
       alert("Account created successfully!");
 
-      window.location.href = "/login";
+      window.location.href = "/#/login";
     } catch {
       alert("Could not connect to backend");
     }
@@ -288,7 +288,7 @@ function CreatePoll() {
 
     if (!token) {
       alert("Please login first.");
-      window.location.href = "/login";
+      window.location.href = "/#/login";
       return;
     }
 
