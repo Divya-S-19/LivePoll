@@ -1,5 +1,5 @@
 import {
-  BrowserRouter,
+  HashRouter,
   Routes,
   Route,
   Link,
@@ -615,7 +615,7 @@ function PollPage() {
 
 function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         <Route path="/" element={<Home />} />
 
@@ -627,7 +627,7 @@ function App() {
 
         <Route path="/poll/:id" element={<PollPage />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 
