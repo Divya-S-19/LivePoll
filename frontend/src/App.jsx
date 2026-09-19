@@ -314,7 +314,7 @@ function CreatePoll() {
         return;
       }
 
-      window.location.href = `/poll/${data.poll.id}`;
+      window.location.href = `/#/poll/${data.poll.id}`;
     } catch {
       alert("Could not connect to backend");
     } finally {
