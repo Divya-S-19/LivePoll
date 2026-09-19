@@ -93,8 +93,9 @@ func main() {
 
 	// Create Gin router
 	router := gin.Default()
+	router.SetTrustedProxies(nil)
 	router.Use(cors.New(cors.Config{
-    AllowOrigins: []string{"https://livepoll-frontend-st0u.onrender.com"},
+    AllowOrigins:     []string{"https://livepoll-frontend-st0u.onrender.com"},
     AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
     AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
     AllowCredentials: true,

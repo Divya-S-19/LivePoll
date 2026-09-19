@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -44,12 +44,31 @@ func (h *PollHandler) CreatePoll(c *gin.Context) {
 		return
 	}
 
+	// Server-side question length validation.
+	if len(req.Question) > 300 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Question must be 300 characters or less",
+		})
+		return
+	}
+
 	if len(req.Options) < 2 {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "At least 2 options are required",
 		})
 		return
 	}
+
+	// Prevent excessively large polls.
+	if len(req.Options) > 10 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "A maximum of 10 options is allowed",
+		})
+		return
+	}
+
+	// Track duplicate options.
+	seenOptions := make(map[string]bool)
 
 	for i := range req.Options {
 		req.Options[i] = strings.TrimSpace(req.Options[i])
@@ -60,6 +79,25 @@ func (h *PollHandler) CreatePoll(c *gin.Context) {
 			})
 			return
 		}
+
+		if len(req.Options[i]) > 100 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Each option must be 100 characters or less",
+			})
+			return
+		}
+
+		// Prevent duplicate options.
+		optionKey := strings.ToLower(req.Options[i])
+
+		if seenOptions[optionKey] {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Duplicate options are not allowed",
+			})
+			return
+		}
+
+		seenOptions[optionKey] = true
 	}
 
 	poll := models.Poll{
@@ -155,6 +193,13 @@ func (h *PollHandler) Vote(c *gin.Context) {
 		return
 	}
 
+	if len(req.Option) > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Option is too long",
+		})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -172,7 +217,8 @@ func (h *PollHandler) Vote(c *gin.Context) {
 		return
 	}
 
-	// Check whether the submitted option actually belongs to this poll.
+	// Server-side validation:
+	// make sure the submitted option belongs to this poll.
 	validOption := false
 
 	for _, option := range poll.Options {
@@ -208,41 +254,59 @@ func (h *PollHandler) Vote(c *gin.Context) {
 		return
 	}
 
-	// Update the live vote count in Redis.
+	// Update live count in Redis.
 	redisKey := "poll:" + id + ":option:" + req.Option
 
 	count, err := h.RedisClient.Incr(ctx, redisKey).Result()
 
-if err != nil {
-	c.JSON(http.StatusInternalServerError, gin.H{
-		"error": "Could not update vote count",
-	})
-	return
-}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Could not update vote count",
+		})
+		return
+	}
 
-// Publish the vote update through Redis Pub/Sub
-channel := "poll:" + id + ":updates"
+	// Publish a valid JSON message through Redis Pub/Sub.
+	channel := "poll:" + id + ":updates"
 
-message := `{"option":"` + req.Option + `","count":` + fmt.Sprint(count) + `}`
+	updateMessage := map[string]interface{}{
+		"option": req.Option,
+		"count":  count,
+	}
 
-err = h.RedisClient.Publish(ctx, channel, message).Err()
+	messageBytes, err := json.Marshal(updateMessage)
 
-if err != nil {
-	c.JSON(http.StatusInternalServerError, gin.H{
-		"error": "Could not publish vote update",
-	})
-	return
-}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Could not create vote update",
+		})
+		return
+	}
+
+	err = h.RedisClient.Publish(
+		ctx,
+		channel,
+		string(messageBytes),
+	).Err()
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Could not publish vote update",
+		})
+		return
+	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Vote submitted successfully",
 		"count":   count,
 	})
 }
+
 func (h *PollHandler) GetResults(c *gin.Context) {
 	id := c.Param("id")
 
 	pollID, err := bson.ObjectIDFromHex(id)
+
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid poll ID",
@@ -274,6 +338,7 @@ func (h *PollHandler) GetResults(c *gin.Context) {
 		key := "poll:" + id + ":option:" + option
 
 		count, err := h.RedisClient.Get(ctx, key).Int64()
+
 		if err != nil && err != redis.Nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "Could not get results",

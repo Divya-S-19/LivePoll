@@ -1,19 +1,20 @@
 package handlers
 
 import (
-    "context"
-    "net/http"
-    "os"
-    "strings"
-    "time"
+	"context"
+	"net/http"
+	"net/mail"
+	"os"
+	"strings"
+	"time"
 
-    "github.com/gin-gonic/gin"
-    "github.com/golang-jwt/jwt/v5"
-    "golang.org/x/crypto/bcrypt"
-    "go.mongodb.org/mongo-driver/v2/bson"
-    "go.mongodb.org/mongo-driver/v2/mongo"
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"golang.org/x/crypto/bcrypt"
 
-    "livepoll-backend/models"
+	"livepoll-backend/models"
 )
 
 type AuthHandler struct {
@@ -25,6 +26,7 @@ type SignupRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 }
+
 type LoginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
@@ -34,6 +36,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	var req LoginRequest
 
+	// Parse JSON request
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid request",
@@ -41,8 +44,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Normalize email
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
 
+	// Required fields
 	if req.Email == "" || req.Password == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Email and password are required",
@@ -50,11 +55,29 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Validate email format
+	if _, err := mail.ParseAddress(req.Email); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid email address",
+		})
+		return
+	}
+
+	// Prevent unnecessarily large password input
+	if len(req.Password) > 72 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid email or password",
+		})
+		return
+	}
+
+	// Database timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	var user models.User
 
+	// Find user
 	err := h.UserCollection.FindOne(
 		ctx,
 		bson.M{"email": req.Email},
@@ -67,6 +90,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Compare password with bcrypt hash
 	err = bcrypt.CompareHashAndPassword(
 		[]byte(user.Password),
 		[]byte(req.Password),
@@ -79,6 +103,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Get JWT secret
 	secret := os.Getenv("JWT_SECRET")
 
 	if secret == "" {
@@ -88,12 +113,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Create JWT token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": user.ID.Hex(),
 		"email":   user.Email,
 		"exp":     time.Now().Add(24 * time.Hour).Unix(),
 	})
 
+	// Sign JWT
 	tokenString, err := token.SignedString([]byte(secret))
 
 	if err != nil {
@@ -103,6 +130,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Send response
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Login successful",
 		"token":   tokenString,
@@ -118,6 +146,7 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 
 	var req SignupRequest
 
+	// Parse JSON request
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid request",
@@ -125,9 +154,11 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		return
 	}
 
+	// Normalize input
 	req.Name = strings.TrimSpace(req.Name)
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
 
+	// Required fields
 	if req.Name == "" || req.Email == "" || req.Password == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Name, email and password are required",
@@ -135,18 +166,37 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		return
 	}
 
-	if len(req.Password) < 6 {
+	// Name length validation
+	if len(req.Name) > 100 {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Password must be at least 6 characters",
+			"error": "Name must be 100 characters or less",
 		})
 		return
 	}
 
+	// Email validation
+	if _, err := mail.ParseAddress(req.Email); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid email address",
+		})
+		return
+	}
+
+	// Password validation
+	if len(req.Password) < 6 || len(req.Password) > 72 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Password must be between 6 and 72 characters",
+		})
+		return
+	}
+
+	// Database timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	var existingUser models.User
 
+	// Check whether email already exists
 	err := h.UserCollection.FindOne(
 		ctx,
 		bson.M{"email": req.Email},
@@ -159,6 +209,7 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		return
 	}
 
+	// Hash password using bcrypt
 	hashedPassword, err := bcrypt.GenerateFromPassword(
 		[]byte(req.Password),
 		bcrypt.DefaultCost,
@@ -171,6 +222,7 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		return
 	}
 
+	// Create user
 	user := models.User{
 		ID:       bson.NewObjectID(),
 		Name:     req.Name,
@@ -178,6 +230,7 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		Password: string(hashedPassword),
 	}
 
+	// Save user
 	_, err = h.UserCollection.InsertOne(ctx, user)
 
 	if err != nil {
